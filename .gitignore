@@ -1,0 +1,23 @@
+# Local environment / secrets — NEVER commit real instance URLs or credentials
+.env
+.env.*
+!.env.example
+*.local
+
+# Test / build artifacts
+*.test
+*.out
+coverage.txt
+coverage.html
+/dist/
+/bin/
+
+# Generated pentest reports produced while testing
+*.docx
+testdata/out/
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp

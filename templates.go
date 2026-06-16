@@ -77,6 +77,35 @@ func (s *TemplatesService) Delete(ctx context.Context, id string) error {
 	return callNoContent(ctx, s.c, apiReq{method: http.MethodDelete, path: "/templates/" + pathID(id), op: "Templates.Delete"})
 }
 
+// FindByName returns the template whose name matches (case-insensitively), or
+// nil if none exists.
+func (s *TemplatesService) FindByName(ctx context.Context, name string) (*Template, error) {
+	templates, err := s.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range templates {
+		if strings.EqualFold(templates[i].Name, name) {
+			return &templates[i], nil
+		}
+	}
+	return nil, nil
+}
+
+// EnsureDefault returns the named template, creating it from the built-in
+// minimal template (see MinimalReportTemplateDocx) if it does not yet exist.
+// This guarantees the instance has a working report template to generate with.
+func (s *TemplatesService) EnsureDefault(ctx context.Context, name string) (*Template, error) {
+	existing, err := s.FindByName(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		return existing, nil
+	}
+	return s.CreateDefault(ctx, name)
+}
+
 // Download returns the raw bytes of the template document by id.
 func (s *TemplatesService) Download(ctx context.Context, id string) ([]byte, error) {
 	if id == "" {

@@ -222,6 +222,19 @@ func (c *Client) SetScope(ctx context.Context, auditID string, hosts ...string) 
 	return c.Audits.UpdateGeneral(ctx, auditID, AuditGeneral{Scope: hosts})
 }
 
+// SetAffectedAssets sets a finding's "Affected assets" field. In pwndoc this is
+// the finding's Scope field; it is rendered via the {@affected} template tag, so
+// HTML (use the rich-text helpers) is supported. Returns the updated finding.
+func (c *Client) SetAffectedAssets(ctx context.Context, auditID, findingID, html string) (*Finding, error) {
+	f, err := c.Findings.Get(ctx, auditID, findingID)
+	if err != nil {
+		return nil, err
+	}
+	upd := *f
+	upd.Scope = html
+	return c.Findings.Update(ctx, auditID, findingID, upd)
+}
+
 // SetDates sets the engagement start and end dates (ISO yyyy-mm-dd).
 func (c *Client) SetDates(ctx context.Context, auditID, start, end string) error {
 	return c.Audits.UpdateGeneral(ctx, auditID, AuditGeneral{
@@ -273,6 +286,7 @@ type PentestBuilder struct {
 	clientLast    string
 	collaborators []string
 	reviewers     []string
+	templateName  string
 	general       AuditGeneral
 	queued        []Finding
 }
@@ -330,6 +344,14 @@ func (b *PentestBuilder) Template(id string) *PentestBuilder {
 	return b
 }
 
+// TemplateByName sets the report template by name, resolved to its id at Run.
+// If no template with that name exists, one is created from the built-in
+// minimal template (see Templates.EnsureDefault) so report generation works.
+func (b *PentestBuilder) TemplateByName(name string) *PentestBuilder {
+	b.templateName = name
+	return b
+}
+
 // AddFinding queues a finding to be created once the audit exists.
 func (b *PentestBuilder) AddFinding(f Finding) *PentestBuilder {
 	b.queued = append(b.queued, f)
@@ -338,7 +360,12 @@ func (b *PentestBuilder) AddFinding(f Finding) *PentestBuilder {
 
 // Run creates the audit, resolves all names to ids (auto-creating company and
 // client when missing), applies the general settings, and flushes queued
-// findings. It returns the freshly fetched, fully-populated audit.
+// findings. On success it returns the freshly fetched, fully-populated audit.
+//
+// On a partial failure (the audit was created but a later step failed), Run
+// returns a non-nil *Audit whose ID identifies the created — now orphaned —
+// audit, alongside the error, so the caller can delete it. Run mutates builder
+// state and is not idempotent; create a new builder to retry.
 func (b *PentestBuilder) Run(ctx context.Context) (*Audit, error) {
 	a, err := b.c.Audits.Create(ctx, b.create)
 	if err != nil {
@@ -348,26 +375,33 @@ func (b *PentestBuilder) Run(ctx context.Context) (*Audit, error) {
 	var companyRef *CompanyRef
 	if b.companyName != "" {
 		if companyRef, err = b.c.resolveCompany(ctx, b.companyName); err != nil {
-			return a, err
+			return a, fmt.Errorf("pwndoc: created audit %s but failed to resolve company %q: %w", a.ID, b.companyName, err)
 		}
 		b.general.Company = companyRef
 	}
 	if b.clientEmail != "" {
 		contact, cerr := b.c.resolveContact(ctx, b.clientEmail, b.clientFirst, b.clientLast, companyRef)
 		if cerr != nil {
-			return a, cerr
+			return a, fmt.Errorf("pwndoc: created audit %s but failed to resolve client %q: %w", a.ID, b.clientEmail, cerr)
 		}
 		b.general.Client = contact
 	}
 	if len(b.collaborators) > 0 {
 		if b.general.Collaborators, err = b.c.resolveUsers(ctx, b.collaborators); err != nil {
-			return a, err
+			return a, fmt.Errorf("pwndoc: created audit %s but failed to resolve collaborators: %w", a.ID, err)
 		}
 	}
 	if len(b.reviewers) > 0 {
 		if b.general.Reviewers, err = b.c.resolveUsers(ctx, b.reviewers); err != nil {
-			return a, err
+			return a, fmt.Errorf("pwndoc: created audit %s but failed to resolve reviewers: %w", a.ID, err)
 		}
+	}
+	if b.templateName != "" && b.general.Template == nil {
+		tmpl, terr := b.c.Templates.EnsureDefault(ctx, b.templateName)
+		if terr != nil {
+			return a, fmt.Errorf("pwndoc: created audit %s but failed to resolve template %q: %w", a.ID, b.templateName, terr)
+		}
+		b.general.Template = String(tmpl.ID)
 	}
 
 	if !isZeroGeneral(b.general) {

@@ -144,7 +144,7 @@ to discover its verbs.
 | `c.Users` | Users, current profile, first-run init, TOTP |
 | `c.Data` | Catalogs: languages, audit types, vulnerability types/categories, custom sections, custom fields, roles |
 | `c.Vulnerabilities` | The reusable vulnerability template database |
-| `c.Templates` | Word report templates (`Create`, `CreateFromFile`, `Download`) |
+| `c.Templates` | Word report templates (`Create`, `CreateFromFile`, `CreateDefault`, `EnsureDefault`, `FindByName`, `Download`) |
 | `c.Settings` | Instance settings (`Get`, `Update`, `Captions`, `SetCaptions`) |
 | `c.Images` | Image upload/download/delete (`Upload`, `UploadFile`, `UploadBytes`, `Download`) |
 | `c.Backups` | Instance backups (`List`, `Create`, `Restore`, `Download`, `Upload`) |
@@ -176,7 +176,7 @@ audit, _ := c.NewPentest("Acme Web App", "en", "Penetration Test").
 	Reviewers("carol").
 	Scope("app.acme.test", "10.0.0.0/24").
 	Dates("2026-06-15", "2026-06-20").
-	Template("<templateID>").
+	TemplateByName("go-pwndocapi-default").  // resolved/created at Run (or Template("<id>"))
 	AddFinding(pwndoc.Finding{Title: "Missing security headers", Priority: pwndoc.PriorityLow}).
 	Run(ctx)
 
@@ -185,6 +185,7 @@ c.SetCompany(ctx, auditID, "Acme Corp")          // create/link by name
 c.SetClient(ctx, auditID, "ciso@acme.test")      // create/link by email
 c.SetScope(ctx, auditID, "host1", "host2")
 c.SetDates(ctx, auditID, "2026-06-15", "2026-06-20")
+c.SetAffectedAssets(ctx, auditID, findingID, pwndoc.Bullets("app.acme.test", "10.0.0.10"))
 finding, _ := c.QuickFinding(ctx, auditID, "Quick win", pwndoc.PriorityMedium)
 
 // Reports
@@ -234,6 +235,94 @@ You can also work with images directly:
 img, _ := c.Images.UploadFile(ctx, "poc.png", auditID) // -> img.ID
 raw, _ := c.Images.Download(ctx, img.ID)                // decoded bytes
 ```
+
+---
+
+## Report templates & generation
+
+A pwndoc report is a Word `.docx` filled from a template containing
+[docxtemplater](https://docxtemplater.com) tags. The library ships a **complete,
+generation-ready template built in memory** — no external file to hunt for — so
+an instance with no working template can still produce reports:
+
+```go
+// Create-if-missing the built-in template, then generate.
+tmpl, _ := c.Templates.EnsureDefault(ctx, "go-pwndocapi-default")
+audit, _ := c.NewPentest("Engagement", "en", "Penetration Test").
+	TemplateByName(tmpl.Name).
+	Run(ctx)
+// ... add findings ...
+n, _ := c.GenerateReport(ctx, audit.ID, "out/report.docx") // writes the .docx
+```
+
+Other ways to get a template onto the instance:
+
+```go
+c.Templates.CreateDefault(ctx, "my-template")          // upload the built-in one
+c.Templates.CreateFromFile(ctx, "Corporate", "tpl.docx") // upload your own .docx
+raw, _ := pwndoc.MinimalReportTemplateDocx()           // the built-in template's bytes
+```
+
+The built-in template renders the full audit (name, type, dates, company,
+client, scope) and, for every finding: identifier, title, vuln type, category,
+priority, remediation complexity, the affected assets, the complete CVSS 3.1
+breakdown (vector, base/temporal/environmental scores and every individual
+metric), the rich-text Description / Observation / Proof-of-Concept (with
+captioned images) / Remediation fields, and the references list.
+
+> **Authoring your own template?** pwndoc's parser rejects Unicode "smart"
+> quotes — a tag like `{#priority == '4'}` (curly quotes) raises a render
+> `"Multi error"`. Use straight ASCII quotes. (The stock "PT Template" that ships
+> with many instances trips on exactly this.)
+
+---
+
+## CVSS 3.1 scoring
+
+`CVSS31` builds a full vector string (all base, temporal and environmental
+metrics) for `Finding.CVSSv3`; pwndoc computes the scores and severities from it.
+Metrics left empty or set to "Not Defined" are omitted.
+
+```go
+v := pwndoc.CVSS31{
+	AV: pwndoc.AVNetwork, AC: pwndoc.ACLow, PR: pwndoc.PRNone, UI: pwndoc.UINone,
+	S: pwndoc.ScopeChanged, C: pwndoc.ImpactHigh, I: pwndoc.ImpactHigh, A: pwndoc.ImpactHigh,
+	// optional temporal + environmental:
+	E: pwndoc.EFunctional, RL: pwndoc.RLOfficialFix, RC: pwndoc.RCConfirmed,
+	CR: pwndoc.ReqHigh, IR: pwndoc.ReqHigh, AR: pwndoc.ReqMedium,
+}
+_ = v.Validate()                 // checks the 8 required base metrics
+finding.CVSSv3 = v.Vector()      // "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H/E:F/..."
+got, _ := pwndoc.ParseCVSS31(finding.CVSSv3) // parse back into a CVSS31
+```
+
+---
+
+## Rich-text formatting
+
+Finding prose (Description, Observation, Remediation, POC) and the affected-assets
+field are HTML; pwndoc converts a known subset of tags to Word formatting. The
+helpers emit exactly that subset, so what you write is what renders:
+
+```go
+html := pwndoc.NewRichText().
+	H(4, "Finding detail").
+	P("Styles: " + pwndoc.Bold("bold") + ", " + pwndoc.Italic("italic") + ", " +
+		pwndoc.Underline("underline") + ", " + pwndoc.Strike("strikethrough") + ", " +
+		pwndoc.Highlight("highlight") + ", " + pwndoc.Code("inline code") + ".").
+	Bullets("First point", "Second point").
+	Numbered("Step one", "Step two").
+	Code("bash", "sqlmap -u https://target/login --batch").
+	String()
+
+finding.Description = html
+// Or one call demonstrating every style:
+finding.Observation = pwndoc.FormattingShowcase()
+```
+
+Inline: `Bold`, `Italic`, `Underline`, `Strike`, `Highlight`/`HighlightWith`,
+`Code`, `Esc`. Blocks: `Para`, `Heading`, `Bullets`, `Numbered`, `CodeBlock`.
+`Affected assets` is the finding's `Scope` field and also accepts this HTML.
 
 ---
 
@@ -311,8 +400,12 @@ See [`.env.example`](.env.example) for the full list. **Never commit a filled-in
   server-assigned `_id` and `identifier`).
 - **`AuditGeneral.Scope` is `[]string`** (the server stores each as
   `{name, hosts}`); the structured host model is on `AuditNetwork`/`Audit.Scope`.
-- **Report generation** depends on the instance having a valid `.docx` template;
-  a broken template surfaces as a `500` `*APIError` from `Audits.Generate`.
+- **Report generation** needs a valid `.docx` template on the instance. Use the
+  built-in one (`c.Templates.EnsureDefault`) if none works; a broken template
+  surfaces as a `500` `*APIError` from `Audits.Generate`. Templates with Unicode
+  smart quotes fail to render — see [Report templates](#report-templates--generation).
+- **Affected assets** is the finding's `Scope` field (rendered via the report's
+  `{@affected}` tag); it accepts the rich-text HTML helpers.
 
 ---
 

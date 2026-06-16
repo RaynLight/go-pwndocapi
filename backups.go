@@ -121,25 +121,43 @@ func (s *BackupsService) Upload(ctx context.Context, r io.Reader, filename strin
 		return nil, fmt.Errorf("pwndoc: Backups.Upload: %w", err)
 	}
 
+	payload := buf.Bytes()
+	contentType := mw.FormDataContentType()
 	url := s.c.baseURL.String() + apiPrefix + "/backups/upload"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, &buf)
-	if err != nil {
-		return nil, fmt.Errorf("pwndoc: Backups.Upload: %w", err)
-	}
-	req.Header.Set("Content-Type", mw.FormDataContentType())
-	req.Header.Set("User-Agent", s.c.userAgent)
-	req.Header.Set("Accept", "application/json")
-	if tok := s.c.accessTokenValue(); tok != "" {
-		req.Header.Set("Cookie", "token=JWT "+tok)
+
+	send := func() (int, []byte, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
+		if err != nil {
+			return 0, nil, fmt.Errorf("pwndoc: Backups.Upload: %w", err)
+		}
+		req.Header.Set("Content-Type", contentType)
+		req.Header.Set("User-Agent", s.c.userAgent)
+		req.Header.Set("Accept", "application/json")
+		if tok := s.c.accessTokenValue(); tok != "" {
+			req.Header.Set("Cookie", "token=JWT "+tok)
+		}
+		resp, err := s.c.doer.Do(req)
+		if err != nil {
+			return 0, nil, &APIError{Op: "Backups.Upload", Method: http.MethodPost, Path: apiPrefix + "/backups/upload", Message: err.Error(), Err: err}
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, body, nil
 	}
 
-	resp, err := s.c.doer.Do(req)
+	status, body, err := send()
 	if err != nil {
-		return nil, &APIError{Op: "Backups.Upload", Method: http.MethodPost, Path: apiPrefix + "/backups/upload", Message: err.Error(), Err: err}
+		return nil, err
 	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	out, derr := decodeEnvelope[Backup](body, resp.StatusCode)
+	// Honor auto-refresh on a 401, mirroring the JSON transport.
+	if status == http.StatusUnauthorized && s.c.autoRefresh && s.c.refreshTokenValue() != "" {
+		if s.c.refresh(ctx) == nil {
+			if status, body, err = send(); err != nil {
+				return nil, err
+			}
+		}
+	}
+	out, derr := decodeEnvelope[Backup](body, status)
 	if derr != nil {
 		return nil, annotate(derr, apiReq{method: http.MethodPost, path: "/backups/upload", op: "Backups.Upload"})
 	}

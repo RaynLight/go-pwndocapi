@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"strings"
 )
@@ -28,7 +27,7 @@ const (
 // image's id and the alt is the caption (which the report generator renders as
 // the figure caption). The caption is HTML-escaped.
 func imgTag(imageID, caption string) string {
-	return fmt.Sprintf(`<img src="%s" alt="%s">`, imageID, html.EscapeString(caption))
+	return fmt.Sprintf(`<img src="%s" alt="%s">`, html.EscapeString(imageID), html.EscapeString(caption))
 }
 
 // appendImageHTML returns a copy of f with an image paragraph appended to the
@@ -71,7 +70,7 @@ func (c *Client) AttachImageToField(ctx context.Context, auditID, findingID stri
 }
 
 var imgTagRe = regexp.MustCompile(`(?i)<img\b[^>]*>`)
-var imgAltRe = regexp.MustCompile(`(?i)\salt="(?:[^"\\]|\\.)*"`)
+var imgAltRe = regexp.MustCompile(`(?i)\salt="[^"]*"`)
 
 // SetFigureCaption updates the caption (alt text) of the imageIndex-th image
 // (0-based) in the finding's POC field.
@@ -388,5 +387,8 @@ func (b *PentestBuilder) Run(ctx context.Context) (*Audit, error) {
 }
 
 func isZeroGeneral(g AuditGeneral) bool {
-	return reflect.DeepEqual(g, AuditGeneral{})
+	return g.Name == nil && g.Date == nil && g.DateStart == nil && g.DateEnd == nil &&
+		g.Client == nil && g.Company == nil && len(g.Collaborators) == 0 &&
+		len(g.Reviewers) == 0 && g.Language == nil && len(g.Scope) == 0 &&
+		g.Template == nil && len(g.CustomFields) == 0
 }

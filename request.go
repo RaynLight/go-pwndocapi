@@ -40,7 +40,7 @@ func decodeEnvelope[T any](body []byte, httpStatus int) (T, error) {
 			return zero, &APIError{StatusCode: httpStatus, Message: truncate(strings.TrimSpace(string(body)), 512)}
 		}
 	}
-	if httpStatus >= 200 && httpStatus < 300 && env.Status == "success" {
+	if httpStatus >= 200 && httpStatus < 300 && (env.Status == "success" || len(body) == 0) {
 		var out T
 		if len(env.Datas) > 0 && string(env.Datas) != "null" {
 			if err := json.Unmarshal(env.Datas, &out); err != nil {
@@ -173,17 +173,22 @@ func (c *Client) newRequest(ctx context.Context, r apiReq, body []byte) (*http.R
 	return req, nil
 }
 
+// annotate fills in operation/method/path context on an *APIError. It returns a
+// clone so the original error (which may be shared or constructed elsewhere) is
+// never mutated in place.
 func annotate(err error, r apiReq) error {
 	var ae *APIError
-	if errors.As(err, &ae) {
-		if ae.Op == "" {
-			ae.Op = r.op
-		}
-		if ae.Method == "" {
-			ae.Method, ae.Path = r.method, apiPrefix+r.path
-		}
+	if !errors.As(err, &ae) {
+		return err
 	}
-	return err
+	clone := *ae
+	if clone.Op == "" {
+		clone.Op = r.op
+	}
+	if clone.Method == "" {
+		clone.Method, clone.Path = r.method, apiPrefix+r.path
+	}
+	return &clone
 }
 
 // call performs an apiReq and decodes the success datas into T.
@@ -264,8 +269,13 @@ func shouldRetryNetErr(err error) bool {
 }
 
 func (c *Client) backoff(attempt int) time.Duration {
-	d := c.retryBase * time.Duration(1<<(attempt-1))
-	if d > c.retryMax {
+	const maxShift = 30 // guard against overflow for very large retry counts
+	shift := attempt - 1
+	if shift > maxShift {
+		return c.retryMax
+	}
+	d := c.retryBase * time.Duration(int64(1)<<shift)
+	if d <= 0 || d > c.retryMax {
 		d = c.retryMax
 	}
 	return d

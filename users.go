@@ -135,7 +135,9 @@ func (s *UsersService) Update(ctx context.Context, id string, p UpdateUserParams
 			}
 		}
 	}
-	return nil, nil
+	// The update succeeded; fall back to a minimal record so callers never get
+	// a (nil, nil) result to dereference.
+	return &User{ID: id}, nil
 }
 
 // UpdateMe updates the current user's own profile. On success the rotated access

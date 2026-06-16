@@ -220,11 +220,7 @@ func (c *Client) SetClient(ctx context.Context, auditID, email string) error {
 
 // SetScope replaces the audit scope with the given host strings.
 func (c *Client) SetScope(ctx context.Context, auditID string, hosts ...string) error {
-	scope := make([]ScopeHost, len(hosts))
-	for i, h := range hosts {
-		scope[i] = ScopeHost{Name: h}
-	}
-	return c.Audits.UpdateGeneral(ctx, auditID, AuditGeneral{Scope: scope})
+	return c.Audits.UpdateGeneral(ctx, auditID, AuditGeneral{Scope: hosts})
 }
 
 // SetDates sets the engagement start and end dates (ISO yyyy-mm-dd).
@@ -307,9 +303,7 @@ func (b *PentestBuilder) Client(email, firstname, lastname string) *PentestBuild
 
 // Scope appends scope host entries.
 func (b *PentestBuilder) Scope(hosts ...string) *PentestBuilder {
-	for _, h := range hosts {
-		b.general.Scope = append(b.general.Scope, ScopeHost{Name: h})
-	}
+	b.general.Scope = append(b.general.Scope, hosts...)
 	return b
 }
 

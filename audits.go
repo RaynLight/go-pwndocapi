@@ -1,7 +1,9 @@
 package pwndoc
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -40,7 +42,7 @@ type Audit struct {
 	Scope         []ScopeHost        `json:"scope,omitempty"`
 	Findings      []Finding          `json:"findings,omitempty"`
 	Sections      []SectionData      `json:"sections,omitempty"`
-	Template      string             `json:"template,omitempty"`
+	Template      *TemplateRef       `json:"template,omitempty"` // id on create, populated object on read
 	CustomFields  []CustomFieldValue `json:"customFields,omitempty"`
 	State         string             `json:"state,omitempty"`
 	Approvals     []User             `json:"approvals,omitempty"`
@@ -77,7 +79,7 @@ type AuditGeneral struct {
 	Collaborators []User             `json:"collaborators,omitempty"`
 	Reviewers     []User             `json:"reviewers,omitempty"`
 	Language      *string            `json:"language,omitempty"`
-	Scope         []ScopeHost        `json:"scope,omitempty"`
+	Scope         []string           `json:"scope,omitempty"` // host strings; the server wraps each as {name}
 	Template      *string            `json:"template,omitempty"`
 	CustomFields  []CustomFieldValue `json:"customFields,omitempty"`
 }
@@ -86,6 +88,37 @@ type AuditGeneral struct {
 type CompanyRef struct {
 	ID   string `json:"_id,omitempty"`
 	Name string `json:"name,omitempty"`
+}
+
+// TemplateRef references a report template. On read pwndoc populates it as an
+// object ({_id, name, ext}); on write only the id is needed.
+type TemplateRef struct {
+	ID   string `json:"_id,omitempty"`
+	Name string `json:"name,omitempty"`
+	Ext  string `json:"ext,omitempty"`
+}
+
+// UnmarshalJSON allows a TemplateRef to decode from a bare id string or an object.
+func (r *TemplateRef) UnmarshalJSON(data []byte) error {
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 || string(data) == "null" {
+		return nil
+	}
+	if data[0] == '"' {
+		var id string
+		if err := json.Unmarshal(data, &id); err != nil {
+			return err
+		}
+		r.ID = id
+		return nil
+	}
+	type alias TemplateRef
+	var a alias
+	if err := json.Unmarshal(data, &a); err != nil {
+		return err
+	}
+	*r = TemplateRef(a)
+	return nil
 }
 
 // ScopeHost is one named scope entry with optional discovered hosts.

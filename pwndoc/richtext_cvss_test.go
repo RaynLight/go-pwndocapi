@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	pwndoc "github.com/RaynLight/go-pwndocapi"
+	pwndoc "github.com/RaynLight/go-pwndocapi/pwndoc"
 )
 
 func TestCVSS31Vector(t *testing.T) {

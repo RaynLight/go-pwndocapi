@@ -22,14 +22,15 @@ generate the report) take only a handful of calls.
 ## Install
 
 ```bash
-go get github.com/RaynLight/go-pwndocapi
+go get github.com/RaynLight/go-pwndocapi/pwndoc
 ```
 
 ```go
-import pwndoc "github.com/RaynLight/go-pwndocapi"
+import "github.com/RaynLight/go-pwndocapi/pwndoc"
 ```
 
-Requires Go 1.22+.
+The package is named `pwndoc`, so it is referenced as `pwndoc.Client`,
+`pwndoc.Finding`, `pwndoc.CVSS31`, `pwndoc.Bold`, etc. Requires Go 1.22+.
 
 ---
 
@@ -42,7 +43,7 @@ import (
 	"context"
 	"log"
 
-	pwndoc "github.com/RaynLight/go-pwndocapi"
+	"github.com/RaynLight/go-pwndocapi/pwndoc"
 )
 
 func main() {

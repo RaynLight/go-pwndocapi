@@ -25,7 +25,7 @@ import (
 	"os"
 	"time"
 
-	pwndoc "github.com/RaynLight/go-pwndocapi"
+	pwndoc "github.com/RaynLight/go-pwndocapi/pwndoc"
 )
 
 // A valid 1x1 PNG, used as the proof-of-concept screenshot.

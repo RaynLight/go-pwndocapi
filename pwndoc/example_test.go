@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	pwndoc "github.com/RaynLight/go-pwndocapi"
+	pwndoc "github.com/RaynLight/go-pwndocapi/pwndoc"
 )
 
 // Example shows the end-to-end happy path: connect, build an engagement by name,

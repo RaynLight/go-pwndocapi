@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	pwndoc "github.com/RaynLight/go-pwndocapi"
+	pwndoc "github.com/RaynLight/go-pwndocapi/pwndoc"
 )
 
 // TestIntegrationFullScope exercises every feature the library is meant to

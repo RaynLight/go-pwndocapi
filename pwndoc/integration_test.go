@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	pwndoc "github.com/RaynLight/go-pwndocapi"
+	pwndoc "github.com/RaynLight/go-pwndocapi/pwndoc"
 )
 
 // Integration tests run only when PWNDOC_URL is set; they exercise the library

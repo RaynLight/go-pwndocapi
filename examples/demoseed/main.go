@@ -26,7 +26,7 @@ import (
 	"os"
 	"time"
 
-	pwndoc "github.com/RaynLight/go-pwndocapi"
+	pwndoc "github.com/RaynLight/go-pwndocapi/pwndoc"
 )
 
 func main() {
